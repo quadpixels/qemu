@@ -36,6 +36,8 @@
 #include "tcg-accel-ops.h"
 #include "tcg-accel-ops-mttcg.h"
 
+#include "../../mydebug.hpp"
+
 typedef struct MttcgForceRcuNotifier {
     Notifier notifier;
     CPUState *cpu;
@@ -47,7 +49,9 @@ static void do_nothing(CPUState *cpu, run_on_cpu_data d)
 
 static void mttcg_force_rcu(Notifier *notify, void *data)
 {
+    AddLogEntry("Started an MTTCG CPU thread");
     CPUState *cpu = container_of(notify, MttcgForceRcuNotifier, notifier)->cpu;
+    UpdateCPUICount(cpu, 0);
 
     /*
      * Called with rcu_registry_lock held, using async_run_on_cpu() ensures

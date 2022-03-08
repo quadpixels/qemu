@@ -227,7 +227,8 @@ static void npcm7xx_smbus_update_irq(NPCM7xxSMBusState *s)
     }
 }
 
-static void npcm7xx_smbus_nack(NPCM7xxSMBusState *s)
+void npcm7xx_smbus_nack(NPCM7xxSMBusState *s);
+void npcm7xx_smbus_nack(NPCM7xxSMBusState *s)
 {
     s->st &= ~NPCM7XX_SMBST_SDAST;
     s->st |= NPCM7XX_SMBST_NEGACK;

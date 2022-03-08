@@ -2811,3 +2811,7 @@ static void register_types(void)
 }
 
 type_init(register_types)
+
+const char* GetObjectTypeName(Object* o) {
+    return o->class->type->name;
+}

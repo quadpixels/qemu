@@ -3138,6 +3138,9 @@ foreach target : target_dirs
     arch_srcs += gdbstub_xml
   endif
 
+  cxx = meson.get_compiler('cpp')
+  glut = cxx.find_library('glut')
+
   t = target_arch[target_base_arch].apply(config_target, strict: false)
   arch_srcs += t.sources()
   arch_deps += t.dependencies()

@@ -41,6 +41,8 @@
 #include "sysemu/cpu-throttle.h"
 #include "timers-state.h"
 
+#include "../mydebug.hpp"
+
 /*
  * ICOUNT: Instruction Counter
  *
@@ -88,6 +90,8 @@ static void icount_update_locked(CPUState *cpu)
 {
     int64_t executed = icount_get_executed(cpu);
     cpu->icount_budget -= executed;
+
+    UpdateCPUICount(cpu, executed);
 
     qatomic_set_i64(&timers_state.qemu_icount,
                     timers_state.qemu_icount + executed);

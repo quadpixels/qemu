@@ -61,6 +61,10 @@
 #include "sysemu/tpm.h"
 #include "trace.h"
 
+#include "../mydebug.hpp"
+
+extern void UpdateNPCM7XXDebugTimerStates(void);
+
 static NotifierList exit_notifiers =
     NOTIFIER_LIST_INITIALIZER(exit_notifiers);
 
@@ -728,6 +732,7 @@ void qemu_main_loop(void)
 #ifdef CONFIG_PROFILER
         dev_time += profile_getclock() - ti;
 #endif
+        UpdateNPCM7XXDebugTimerStates();
     }
 }
 
