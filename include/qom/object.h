@@ -26,6 +26,8 @@ typedef struct TypeInfo TypeInfo;
 typedef struct InterfaceClass InterfaceClass;
 typedef struct InterfaceInfo InterfaceInfo;
 
+const char* GetObjectTypeName(Object* o);
+
 #define TYPE_OBJECT "object"
 
 typedef struct ObjectProperty ObjectProperty;

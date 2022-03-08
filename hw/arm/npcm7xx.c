@@ -26,6 +26,46 @@
 #include "qapi/error.h"
 #include "qemu/units.h"
 #include "sysemu/sysemu.h"
+#include "../../mydebug.hpp"
+#include "qemu/typedefs.h"
+
+// For dumping their states
+NPCM7xxState* g_npcm7xxstate;
+void UpdateNPCM7XXDebugTimerStates(void);
+extern void npcm7xx_smbus_nack(NPCM7xxSMBusState *s);
+
+void InjectNpcm7xxSMBusNack(int i2cid);
+void InjectNpcm7xxSMBusNack(int i2cid) {
+    if (!g_npcm7xxstate) {
+        AddLogEntry("Cannot inject NACK: g_npcm7xxstate is NULL");
+        return;
+    }
+    npcm7xx_smbus_nack(&(g_npcm7xxstate->smbus[i2cid]));
+    AddLogEntry("Injected and updated IRQ.");
+}
+
+struct IRQState {
+    Object parent_obj;
+    qemu_irq_handler handler;
+    void* opaque;
+    int n;
+};
+
+void UpdateNPCM7XXDebugTimerStates(void) {
+    if (g_npcm7xxstate != NULL) {
+        for (int i=0; i<ARRAY_SIZE(g_npcm7xxstate->tim); i++) {
+            NPCM7xxTimerCtrlState* the_tim = &(g_npcm7xxstate->tim[i]);
+            NPCM7xxWatchdogTimer* wdt = &the_tim->watchdog_timer;
+            const char* irq_name = GetObjectTypeName(&(wdt->irq->parent_obj));
+            const char* reset_name = GetObjectTypeName(&(wdt->reset_signal->parent_obj));
+            UpdateWatchdogState(i,
+                                irq_name != NULL ? irq_name : "(null)",
+                                reset_name != NULL ? reset_name : "(null)",
+                                wdt->base_timer.expires_ns,
+                                qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        }
+    }
+}
 
 /*
  * This covers the whole MMIO space. We'll use this to catch any MMIO accesses

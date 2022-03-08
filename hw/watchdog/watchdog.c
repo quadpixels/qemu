@@ -31,6 +31,8 @@
 #include "hw/nmi.h"
 #include "qemu/help_option.h"
 
+#include "../../mydebug.hpp"
+
 static WatchdogAction watchdog_action = WATCHDOG_ACTION_RESET;
 static QLIST_HEAD(, WatchdogTimerModel) watchdog_list;
 
@@ -104,11 +106,13 @@ void watchdog_perform_action(void)
     case WATCHDOG_ACTION_RESET:     /* same as 'system_reset' in monitor */
         qapi_event_send_watchdog(WATCHDOG_ACTION_RESET);
         qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+        AddLogEntry("WATCHDOG_ACTION_RESET action performed");
         break;
 
     case WATCHDOG_ACTION_SHUTDOWN:  /* same as 'system_powerdown' in monitor */
         qapi_event_send_watchdog(WATCHDOG_ACTION_SHUTDOWN);
         qemu_system_powerdown_request();
+        AddLogEntry("WATCHDOG_ACTION_SHUTDOWN action performed");
         break;
 
     case WATCHDOG_ACTION_POWEROFF:  /* same as 'quit' command in monitor */

@@ -76,6 +76,8 @@ struct I2CBus {
     I2CNodeList current_devs;
     uint8_t saved_address;
     bool broadcast;
+    int serial_;
+    bool has_serial_;
 };
 
 I2CBus *i2c_init_bus(DeviceState *parent, const char *name);

@@ -2591,6 +2591,9 @@ foreach target : target_dirs
   endif
 
   t = target_arch[arch].apply(config_target, strict: false)
+  cxx = meson.get_compiler('cpp')
+  glut = cxx.find_library('glut')
+
   arch_srcs += t.sources()
   arch_deps += t.dependencies()
 

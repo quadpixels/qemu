@@ -26,6 +26,8 @@
 #include "qemu-common.h"
 #include "sysemu/sysemu.h"
 
+#include "../mydebug.hpp"
+
 #ifdef CONFIG_SDL
 #if defined(__APPLE__) || defined(main)
 #include <SDL.h>
@@ -46,6 +48,19 @@ int main(int argc, char **argv)
 
 int main(int argc, char **argv, char **envp)
 {
+    if (IsBuddyStarted() == 0) {
+        printf("Buddy not started, starting buddy & waiting for 1s\n");
+        pthread_t thd;
+        pthread_attr_t attr1;
+        pthread_attr_init(&attr1);
+        pthread_create(&thd, &attr1, MyBuddyInit, NULL);
+        sleep(1);
+    } else {
+        printf("Buddy started\n");
+    }
+
+    AddLogEntry("Entered softmmu/main.c's main() function");
+
     qemu_init(argc, argv, envp);
     qemu_main_loop();
     qemu_cleanup();

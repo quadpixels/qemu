@@ -15,6 +15,8 @@
 #include "qemu/module.h"
 #include "trace.h"
 
+#include "../../mydebug.hpp"
+
 #define I2C_BROADCAST 0x00
 
 static Property i2c_props[] = {
@@ -63,6 +65,22 @@ I2CBus *i2c_init_bus(DeviceState *parent, const char *name)
     bus = I2C_BUS(qbus_create(TYPE_I2C_BUS, parent, name));
     QLIST_INIT(&bus->current_devs);
     vmstate_register(NULL, VMSTATE_INSTANCE_ID_ANY, &vmstate_i2c_bus, bus);
+
+    char buf[100];
+    if (!bus->has_serial_) {
+        int serial = GetI2CSerial();
+        sprintf(buf, "i2c_bus_%d", serial);
+        AddI2CBus(buf, bus, serial);
+        bus->serial_ = serial;
+        object_property_set_str(OBJECT(bus), "my_debug_tag", buf, NULL);
+        sprintf(buf, "Init I2C Bus #%d, name=%s", serial, name);
+        AddLogEntry(buf);
+        bus->has_serial_ = true;
+    } else {
+        sprintf(buf, "I2C Bus #%d re-inited", bus->serial_);
+        AddLogEntry(buf);
+    }
+
     return bus;
 }
 
@@ -120,6 +138,10 @@ bool i2c_scan_bus(I2CBus *bus, uint8_t address, bool broadcast,
 static int i2c_do_start_transfer(I2CBus *bus, uint8_t address,
                                  enum i2c_event event)
 {
+    char x[100], busname[100], is_inject = false;
+    sprintf(busname, "i2c_bus_%d", bus->serial_);
+    OnI2CTransactionStart(busname, &is_inject);
+
     I2CSlaveClass *sc;
     I2CNode *node;
     bool bus_scanned = false;
@@ -159,6 +181,14 @@ static int i2c_do_start_transfer(I2CBus *bus, uint8_t address,
            start condition.  */
 
         if (sc->event) {
+
+            if (is_inject) {
+                sprintf(x, "Injected NACK to i2c-%d", bus->serial_);
+                AddLogEntry(x);
+                i2c_nack(bus);
+                return 0;
+            }
+
             trace_i2c_event("start", s->address);
             rv = sc->event(s, event);
             if (rv && !bus->broadcast) {
@@ -166,10 +196,21 @@ static int i2c_do_start_transfer(I2CBus *bus, uint8_t address,
                     /* First call, terminate the transfer. */
                     i2c_end_transfer(bus);
                 }
+
+                OnI2CTransactionEnd(busname);
                 return rv;
             }
         }
     }
+
+    if (is_inject) {
+        sprintf(x, "Injected NACK to i2c-%d", bus->serial_);
+        AddLogEntry(x);
+        i2c_nack(bus);
+        return 0;
+    }
+
+    OnI2CTransactionEnd(busname);
     return 0;
 }
 

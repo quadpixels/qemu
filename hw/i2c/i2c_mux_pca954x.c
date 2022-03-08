@@ -27,6 +27,8 @@
 #include "qom/object.h"
 #include "trace.h"
 
+#include "../../mydebug.hpp"
+
 #define PCA9548_CHANNEL_COUNT 8
 #define PCA9546_CHANNEL_COUNT 4
 
@@ -134,10 +136,28 @@ static void pca954x_enable_channel(Pca954xState *s, uint8_t enable_mask)
 
 static void pca954x_write(Pca954xState *s, uint8_t data)
 {
+    Pca954xClass *mc = PCA954X_GET_CLASS(s);
+    int i;
+
     s->control = data;
     pca954x_enable_channel(s, data);
 
     trace_pca954x_write_bytes(data);
+
+    for (i=0; i<mc->nchans; i++) {
+        if (s->bus[i]) {
+            I2CBus* bus = s->bus[i];
+            char busname[100], x[100];
+            sprintf(busname, "i2c_bus_%d", bus->serial_);
+            char is_inject = false;
+            OnI2CTransactionStart(busname, &is_inject);
+            if (is_inject) {
+                sprintf(x, "Injected NACK to i2c-%d", bus->serial_);
+                i2c_nack(bus);
+                AddLogEntry(x);
+            }
+        }
+    }
 }
 
 static int pca954x_write_data(SMBusDevice *d, uint8_t *buf, uint8_t len)
