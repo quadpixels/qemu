@@ -809,11 +809,11 @@ void qmp_inject_nmi(Error **errp)
 }
 
 char g_is_debug_dump = 0;
-void DumpPhysicalMemoryForMyDebug(int64_t addr, int64_t size, unsigned char* outbuf);
-void DumpPhysicalMemoryForMyDebug(int64_t addr, int64_t size, unsigned char* outbuf) {
+void DumpPhysicalMemoryForMyDebug(int64_t addr, int stride, int64_t size, unsigned char* outbuf);
+void DumpPhysicalMemoryForMyDebug(int64_t addr, int stride, int64_t size, unsigned char* outbuf) {
     g_is_debug_dump = 1;
     for (int i=0; i<size; i++) {
-        cpu_physical_memory_read(addr + i, outbuf + i, 1);
+        cpu_physical_memory_read(addr + i * stride, outbuf + i, 1);
     }
     g_is_debug_dump = 0;
 }

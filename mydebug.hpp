@@ -40,6 +40,7 @@ struct MyView {
   void DrawBorder();
   void SetPosition(int _x, int _y);
   void SetSize(int _w, int _h);
+  virtual void OnKeyDown(int keycode) {}
 };
 
 struct CPUStateView : public MyView {
@@ -117,11 +118,22 @@ struct MemView : public MyView {
   std::vector<unsigned char> bytes, pixels;
 
   int pixel_w, pixel_h;
+  int64_t start_address;
+  int stride;
+
+  int update_interval_ms; // Update interval; 0 = do not update
+  long last_update_ms;
+  bool ShouldUpdate();
 
   BytesToPixelIntf* bytes2pixel;
   void SetSize(int _w, int _h);
   void ReadMemoryFromQEMU();
   void ConvertToPixels();
+  void OnKeyDown(int k);
+
+  void ScrollLines(int nlines);
+  void ZoomOut();
+  void ZoomIn();
 };
 
 #endif

@@ -22,7 +22,7 @@
 
 extern "C" {
   extern void InjectNpcm7xxSMBusNack(int i2cid);
-  extern void DumpPhysicalMemoryForMyDebug(int64_t addr, int64_t size, unsigned char* outbuf);
+  extern void DumpPhysicalMemoryForMyDebug(int64_t addr, int stride, int64_t size, unsigned char* outbuf);
 }
 
 int WIN_W = 960, WIN_H = 480;
@@ -105,6 +105,16 @@ int ShouldInjectNACK(const char* desc) {
 
 // ============================================================
 
+int TextWidth(const std::string info) {
+  glWindowPos2i(0, -1);
+  for (const char c : info) {
+    glutBitmapCharacter(GLUT_BITMAP_HELVETICA_10, c);
+  }
+  int raster_pos[4];
+  glGetIntegerv(GL_CURRENT_RASTER_POSITION, raster_pos);
+  return raster_pos[0];
+}
+
 void GlutBitmapString(int canvas_x, int canvas_y, const std::string& info) {
   const int dy = WIN_H - canvas_y;
   glWindowPos2i(canvas_x, dy);
@@ -159,12 +169,18 @@ int main(int argc, char** argv) {
 #endif
 
 void keyboard(unsigned char key, int x, int y) {
-  if (key == 9) {  // Tab
+  if (key == 9 || key == '`') {
     g_flags[4] = true;
     if (g_highlighted_view_idx == -999) {
-      g_highlighted_view_idx = 0;
+      if (key == '`') { g_highlighted_view_idx = g_views.size()-1; }
+      else g_highlighted_view_idx = 0;
     } else {
-      g_highlighted_view_idx ++;
+      if (key == '`') {
+        g_highlighted_view_idx = (g_highlighted_view_idx + g_views.size() - 1) % g_views.size();
+      } else {
+        g_highlighted_view_idx ++;
+      }
+
       if (g_highlighted_view_idx == int(g_views.size())) {
         g_highlighted_view_idx = -999;
       }
@@ -176,8 +192,8 @@ void keyboard(unsigned char key, int x, int y) {
     }
   }
 
-  else if (key == 32) {
-    g_memview->ReadMemoryFromQEMU();
+  if (g_highlighted_view != nullptr) {
+    g_highlighted_view->OnKeyDown(key);
   }
 }
 
@@ -209,6 +225,10 @@ void keyboard2(int key, int x, int y) {
     case GLUT_KEY_PAGE_DOWN: {
       g_flags[6] = true; break;
     }
+  }
+
+  if (g_highlighted_view != nullptr) {
+    g_highlighted_view->OnKeyDown(key);
   }
 }
 
@@ -732,15 +752,48 @@ public:
 
 MemView::MemView() {
   x = 320; y = 80; w = 320; h = 320;
+  start_address = 0; stride = 1;
+  update_interval_ms = 100;
   bytes2pixel = new BytesToRG();
 }
 
 void MemView::Render() {
-  rect(x, y, x+w, y+h);
+
+  if (ShouldUpdate()) {
+    ReadMemoryFromQEMU();
+  }
+
+  DrawBorder();
   const int px = x+4, py = y+20;
   rect(px, py, px+2+pixel_w, py+2+pixel_h);
   glWindowPos2i(px+1, WIN_H - (py+1+pixel_h));
   glDrawPixels(pixel_w, pixel_h, bytes2pixel->Format(), GL_UNSIGNED_BYTE, pixels.data());
+
+  char buf[100];
+  const int64_t range = pixel_w * pixel_h * bytes2pixel->NumBytesPerPixel() * stride;
+  const float mib_lb = float(start_address / 1024.0f / 1024.0f);
+  const float mib_ub = float((start_address + range) / 1024.0f / 1024.0f);
+
+  char buf2[20];
+  if (range > 1024*1024) {
+    snprintf(buf2, 20, "%.2f MiB", range/1024.0f/1024.0f);
+  } else if (range > 1024) {
+    snprintf(buf2, 20, "%.2f KiB", range/1024.0f);
+  } else {
+    snprintf(buf2, 20, "%ld B", range);
+  }
+
+  snprintf(buf, 100, "0x%08lX-0x%08lX (%.2f-%.2f MiB) Stride=%d Showing %s",
+    start_address, start_address + range, mib_lb, mib_ub, stride, buf2);
+  GlutBitmapString(x, y+11, std::string(buf));
+
+  if (update_interval_ms > 0) {
+    snprintf(buf, 100, "Refresh every %dms", update_interval_ms);
+  } else {
+    snprintf(buf, 100, "Press [space] to refresh");
+  }
+  int tw = TextWidth(buf);
+  GlutBitmapString(x+w-1-tw, y+11, std::string(buf));
 }
 
 void MemView::SetSize(int _w, int _h) {
@@ -770,6 +823,45 @@ void MemView::ConvertToPixels() {
 
 void MemView::ReadMemoryFromQEMU() {
   std::fill(pixels.begin(), pixels.end(), 0);
-  DumpPhysicalMemoryForMyDebug(0, bytes.size(), bytes.data());
+  DumpPhysicalMemoryForMyDebug(start_address, stride, bytes.size(), bytes.data());
   ConvertToPixels();
+  last_update_ms = millis();
+}
+
+void MemView::OnKeyDown(int k) {
+  switch (k) {
+    case GLUT_KEY_UP: { ScrollLines(-8); break; }
+    case GLUT_KEY_DOWN: { ScrollLines(8); break; }
+    case GLUT_KEY_PAGE_UP: { ScrollLines(-pixel_h); break; }
+    case GLUT_KEY_PAGE_DOWN: { ScrollLines(pixel_h); break; }
+    case '-': { ZoomOut(); break; }
+    case '=': case '+': { ZoomIn(); break; }
+    case 32: { ReadMemoryFromQEMU(); break; }
+  }
+}
+
+bool MemView::ShouldUpdate() {
+  if (update_interval_ms <= 0) return false;
+  else if (millis() - last_update_ms >= update_interval_ms) return true;
+  else return false;
+}
+
+void MemView::ScrollLines(int nlines) {
+  const int delta = nlines * bytes2pixel->NumPixelDataChannels() * pixel_w * stride;
+  start_address += delta;
+  if (start_address < 0) {
+    start_address = 0;
+  }
+}
+
+void MemView::ZoomOut() {
+  stride *= 2;
+  if (stride >= 1024) stride = 1024;
+  ReadMemoryFromQEMU();
+}
+
+void MemView::ZoomIn() {
+  stride /= 2;
+  if (stride <= 1) stride = 1;
+  ReadMemoryFromQEMU();
 }
