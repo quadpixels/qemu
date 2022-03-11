@@ -145,8 +145,8 @@ static void pca954x_write(Pca954xState *s, uint8_t data)
     trace_pca954x_write_bytes(data);
 
     for (i=0; i<mc->nchans; i++) {
-        if (s->bus[i]) {
-            I2CBus* bus = s->bus[i];
+        if (s->channel[i].enabled) {
+            I2CBus* bus = s->channel[i].bus;
             char busname[100], x[100];
             sprintf(busname, "i2c_bus_%d", bus->serial_);
             char is_inject = false;

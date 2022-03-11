@@ -101,4 +101,27 @@ struct I2CBusStateView : public MyView {
   void OnMouseDown(int button);
 };
 
+// How to visualize bytes/words
+class BytesToPixelIntf {
+public:
+	virtual int NumBytesPerPixel() = 0;
+	virtual void BytesToPixel(unsigned char* byte_ptr, unsigned char* pixel_ptr) = 0;
+	virtual unsigned int Format() = 0;
+	virtual ~BytesToPixelIntf() {}
+	virtual int NumPixelDataChannels() = 0;
+};
+
+struct MemView : public MyView {
+  MemView();
+  void Render() override;
+  std::vector<unsigned char> bytes, pixels;
+
+  int pixel_w, pixel_h;
+
+  BytesToPixelIntf* bytes2pixel;
+  void SetSize(int _w, int _h);
+  void ReadMemoryFromQEMU();
+  void ConvertToPixels();
+};
+
 #endif

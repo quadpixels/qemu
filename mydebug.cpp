@@ -22,9 +22,10 @@
 
 extern "C" {
   extern void InjectNpcm7xxSMBusNack(int i2cid);
+  extern void DumpPhysicalMemoryForMyDebug(int64_t addr, int64_t size, unsigned char* outbuf);
 }
 
-int WIN_W = 640, WIN_H = 480;
+int WIN_W = 960, WIN_H = 480;
 int FRAME_RATE = 20; // Improves speed and don't slow down QEMU too much
 int g_argc; char** g_argv;
 bool g_is_dirty = false;
@@ -35,6 +36,7 @@ LogView* g_logview;
 CPUStateView* g_cpustateview;
 NPCM7XXStateView* g_npcm7xxstateview;
 I2CBusStateView* g_i2cbusstateview;
+MemView* g_memview;
 std::vector<MyView*> g_views;
 int g_highlighted_view_idx = -999;
 MyView* g_highlighted_view;
@@ -118,26 +120,35 @@ void color(const float r, const float g, const float b) {
   g_red = r; g_green = g; g_blue = b;
 }
 
-void fillRect(int canvas_x0, int canvas_y0, int canvas_x1, int canvas_y1) {
-  // With the transformation currently set, top-left is (0, 0).
-  float r=1, g=1, b=1;
-  glBegin(GL_TRIANGLE_FAN);
-  glColor3f(r, g, b); glVertex2f(canvas_x0 - 0.5f, canvas_y0);
-  glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y0);
-  glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y1 + 0.5f);
-  glColor3f(r, g, b); glVertex2f(canvas_x0 - 0.5f, canvas_y1 + 0.5f);
-  glEnd();
-}
-
 void rect(int canvas_x0, int canvas_y0, int canvas_x1, int canvas_y1) {
   // With the transformation currently set, top-left is (0, 0).
   float r=g_red, g=g_green, b=g_blue;
   glBegin(GL_LINE_LOOP);
-  glColor3f(r, g, b); glVertex2f(canvas_x0, canvas_y0);
-  glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y0);
-  glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y1);
-  glColor3f(r, g, b); glVertex2f(canvas_x0 - 0.5f, canvas_y1 + 0.5f);
+  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y0);
+  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y0);
+  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y1);
+  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y1);
   glEnd();
+
+  // To make sure the corners are drawn
+  glBegin(GL_POINTS);
+  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y0);
+  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y0);
+  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y1);
+  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y1);
+  glEnd();
+}
+
+void fillRect(int canvas_x0, int canvas_y0, int canvas_x1, int canvas_y1) {
+  // With the transformation currently set, top-left is (0, 0).
+  float r=1, g=1, b=1;
+  glBegin(GL_TRIANGLE_FAN);
+  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y0);
+  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y0);
+  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y1);
+  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y1);
+  glEnd();
+  rect(canvas_x0, canvas_y0, canvas_x1, canvas_y1); // make sure the boundary is drawn
 }
 
 #ifdef QEMU_BUDDY_STANDALONE
@@ -163,6 +174,10 @@ void keyboard(unsigned char key, int x, int y) {
     } else {
       g_highlighted_view = nullptr;
     }
+  }
+
+  else if (key == 32) {
+    g_memview->ReadMemoryFromQEMU();
   }
 }
 
@@ -340,6 +355,10 @@ void* MyBuddyInit(void* x) {
   g_i2cbusstateview->SetPosition(180, 0);
   g_i2cbusstateview->SetSize(320, 80);
 
+  g_memview = new MemView();
+  g_memview->SetPosition(320, 80);
+  g_memview->SetSize(640, 320);
+
   XInitThreads();
   printf("[MyBuddyInit] Hey!\n");
   glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
@@ -376,6 +395,7 @@ void* MyBuddyInit(void* x) {
   g_views.push_back(g_i2cbusstateview);
   g_views.push_back(g_npcm7xxstateview);
   g_views.push_back(g_logview);
+  g_views.push_back(g_memview);
   
   glutMainLoop();
   return nullptr;
@@ -688,4 +708,68 @@ void I2CBusStateView::OnMouseDown(int button) {
       }
     }
   }
+}
+
+class BytesToRGB : public BytesToPixelIntf {
+public:
+	int NumBytesPerPixel() override { return 3; }
+	int NumPixelDataChannels() override { return 3; }
+	void BytesToPixel(unsigned char* byte_ptr, unsigned char* pixel_ptr) override {
+		for (int i=0; i<3; i++) pixel_ptr[i] = byte_ptr[i];
+	}
+	unsigned int Format() override { return GL_RGB; }
+};
+
+class BytesToRG : public BytesToPixelIntf {
+public:
+	int NumBytesPerPixel() override { return 2; }
+	int NumPixelDataChannels() override { return 3; }
+	void BytesToPixel(unsigned char* byte_ptr, unsigned char* pixel_ptr) override {
+		for (int i=0; i<2; i++) pixel_ptr[i] = byte_ptr[i];
+	}
+	unsigned int Format() override { return GL_RGB; }
+};
+
+MemView::MemView() {
+  x = 320; y = 80; w = 320; h = 320;
+  bytes2pixel = new BytesToRG();
+}
+
+void MemView::Render() {
+  rect(x, y, x+w, y+h);
+  const int px = x+4, py = y+20;
+  rect(px, py, px+2+pixel_w, py+2+pixel_h);
+  glWindowPos2i(px+1, WIN_H - (py+1+pixel_h));
+  glDrawPixels(pixel_w, pixel_h, bytes2pixel->Format(), GL_UNSIGNED_BYTE, pixels.data());
+}
+
+void MemView::SetSize(int _w, int _h) {
+  w = _w; h = _h;
+  pixel_w = w - 16; pixel_h = h - 32;
+
+  bytes.resize(pixel_w * pixel_h * bytes2pixel->NumBytesPerPixel());
+  pixels.resize(pixel_w * pixel_h * bytes2pixel->NumPixelDataChannels());
+
+  for (int i=0; i<int(pixels.size()); i++) {
+    pixels[i] = i % 256;
+  }
+}
+
+void MemView::ConvertToPixels() {
+  const int nc = bytes2pixel->NumPixelDataChannels();
+  const int bp = bytes2pixel->NumBytesPerPixel();
+  unsigned char *byte_ptr = bytes.data();
+  int px = 0, py = 0;
+  for (int i=0; i<pixel_w * pixel_h; byte_ptr += bp, i++) {
+    unsigned char *pixel_ptr = pixels.data() + (nc * ((pixel_h - py) * pixel_w + px));
+    bytes2pixel->BytesToPixel(byte_ptr, pixel_ptr);
+    px ++;
+    if (px >= pixel_w) { px = 0; py ++; }
+  }
+}
+
+void MemView::ReadMemoryFromQEMU() {
+  std::fill(pixels.begin(), pixels.end(), 0);
+  DumpPhysicalMemoryForMyDebug(0, bytes.size(), bytes.data());
+  ConvertToPixels();
 }
