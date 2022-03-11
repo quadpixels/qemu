@@ -2826,6 +2826,7 @@ static MemTxResult flatview_write(FlatView *fv, hwaddr addr, MemTxAttrs attrs,
     return result;
 }
 
+extern char g_is_debug_dump;
 /* Called within RCU critical section.  */
 MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
                                    MemTxAttrs attrs, void *ptr,
@@ -2850,6 +2851,9 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
         } else {
             /* RAM case */
             ram_ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
+            if (ram_ptr == NULL && g_is_debug_dump == 1) {
+                break;
+            }
             memcpy(buf, ram_ptr, l);
         }
 
@@ -2896,6 +2900,9 @@ MemTxResult address_space_read_full(AddressSpace *as, hwaddr addr,
     if (len > 0) {
         RCU_READ_LOCK_GUARD();
         fv = address_space_to_flatview(as);
+        if (fv == NULL && g_is_debug_dump) {
+            return MEMTX_OK;
+        }
         result = flatview_read(fv, addr, attrs, buf, len);
     }
 

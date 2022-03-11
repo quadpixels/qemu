@@ -430,6 +430,7 @@ static qemu_irq npcm7xx_irq(NPCM7xxState *s, int n)
 static void npcm7xx_init(Object *obj)
 {
     NPCM7xxState *s = NPCM7XX(obj);
+    g_npcm7xxstate = s;
     int i;
 
     for (i = 0; i < NPCM7XX_MAX_NUM_CPUS; i++) {
