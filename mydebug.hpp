@@ -114,10 +114,11 @@ public:
 
 struct MemView : public MyView {
   MemView();
-  void Render() override;
-  std::vector<unsigned char> bytes, pixels;
+  virtual void Render() = 0;
 
-  int pixel_w, pixel_h;
+  std::vector<unsigned char> bytes;  // bytes buffer
+  std::vector<unsigned char> pixels; // RGB or RG pixels for display
+
   int64_t start_address;
   int stride;
 
@@ -125,15 +126,41 @@ struct MemView : public MyView {
   long last_update_ms;
   bool ShouldUpdate();
 
-  BytesToPixelIntf* bytes2pixel;
-  void SetSize(int _w, int _h);
-  void ReadMemoryFromQEMU();
-  void ConvertToPixels();
-  void OnKeyDown(int k);
-
-  void ScrollLines(int nlines);
+  virtual void ScrollLines(int nlines) = 0;
   void ZoomOut();
   void ZoomIn();
+
+  virtual void SetSize(int _w, int _h) = 0;
+  void ReadMemoryFromQEMU();
+  virtual void ConvertToPixels() = 0;
+  BytesToPixelIntf* bytes2pixel;
+};
+
+struct MemLinearView : public MemView {
+  MemLinearView();
+  void Render() override;
+
+  int pixel_w, pixel_h;
+
+  void SetSize(int _w, int _h) override;
+  void OnKeyDown(int k);
+
+  void ScrollLines(int nlines) override;
+  void ConvertToPixels() override;
+};
+
+struct MemTiledView : public MemView {
+  MemTiledView();
+  void Render() override;
+
+  int pad_x, pad_y;
+  int nrows, ncols, tile_size;
+  void SetSize(int _w, int _h) override;
+  void OnKeyDown(int k);
+  void ConvertToPixels() override;
+
+  int64_t BytesPerRow();
+  void ScrollLines(int nlines) override;
 };
 
 #endif

@@ -36,7 +36,9 @@ LogView* g_logview;
 CPUStateView* g_cpustateview;
 NPCM7XXStateView* g_npcm7xxstateview;
 I2CBusStateView* g_i2cbusstateview;
-MemView* g_memview;
+MemView* g_mem_view;
+MemLinearView* g_mem_linear_view;
+MemTiledView* g_mem_tiled_view;
 std::vector<MyView*> g_views;
 int g_highlighted_view_idx = -999;
 MyView* g_highlighted_view;
@@ -106,7 +108,7 @@ int ShouldInjectNACK(const char* desc) {
 // ============================================================
 
 int TextWidth(const std::string info) {
-  glWindowPos2i(0, -1);
+  glWindowPos2i(0, -100);
   for (const char c : info) {
     glutBitmapCharacter(GLUT_BITMAP_HELVETICA_10, c);
   }
@@ -375,9 +377,16 @@ void* MyBuddyInit(void* x) {
   g_i2cbusstateview->SetPosition(180, 0);
   g_i2cbusstateview->SetSize(320, 80);
 
-  g_memview = new MemView();
-  g_memview->SetPosition(320, 80);
-  g_memview->SetSize(640, 320);
+  g_mem_linear_view = new MemLinearView();
+  g_mem_linear_view->SetPosition(320, 80);
+  g_mem_linear_view->SetSize(640, 320);
+
+  g_mem_tiled_view = new MemTiledView();
+  g_mem_tiled_view->SetPosition(320, 80);
+  g_mem_tiled_view->SetSize(640, 320);
+
+  g_mem_view = g_mem_tiled_view;
+  //g_mem_view = g_mem_linear_view;
 
   XInitThreads();
   printf("[MyBuddyInit] Hey!\n");
@@ -415,7 +424,7 @@ void* MyBuddyInit(void* x) {
   g_views.push_back(g_i2cbusstateview);
   g_views.push_back(g_npcm7xxstateview);
   g_views.push_back(g_logview);
-  g_views.push_back(g_memview);
+  g_views.push_back(g_mem_view);
   
   glutMainLoop();
   return nullptr;
@@ -750,14 +759,36 @@ public:
 	unsigned int Format() override { return GL_RGB; }
 };
 
+
 MemView::MemView() {
-  x = 320; y = 80; w = 320; h = 320;
-  start_address = 0; stride = 1;
-  update_interval_ms = 100;
   bytes2pixel = new BytesToRG();
+  start_address = 0; stride = 128;
+  update_interval_ms = 100;
 }
 
-void MemView::Render() {
+bool MemView::ShouldUpdate() {
+  if (update_interval_ms <= 0) return false;
+  else if (millis() - last_update_ms >= update_interval_ms) return true;
+  else return false;
+}
+
+MemLinearView::MemLinearView() {
+  x = 320; y = 80; w = 320; h = 320;
+}
+
+std::string BeautifulOffsetString(long x) {
+  char buf2[100];
+  if (x > 1024*1024) {
+    snprintf(buf2, sizeof(buf2), "%.2f MiB", x/1024.0f/1024.0f);
+  } else if (x > 1024) {
+    snprintf(buf2, sizeof(buf2), "%.2f KiB", x/1024.0f);
+  } else {
+    snprintf(buf2, sizeof(buf2), "%ld B", x);
+  }
+  return std::string(buf2);
+}
+
+void MemLinearView::Render() {
 
   if (ShouldUpdate()) {
     ReadMemoryFromQEMU();
@@ -774,17 +805,10 @@ void MemView::Render() {
   const float mib_lb = float(start_address / 1024.0f / 1024.0f);
   const float mib_ub = float((start_address + range) / 1024.0f / 1024.0f);
 
-  char buf2[20];
-  if (range > 1024*1024) {
-    snprintf(buf2, 20, "%.2f MiB", range/1024.0f/1024.0f);
-  } else if (range > 1024) {
-    snprintf(buf2, 20, "%.2f KiB", range/1024.0f);
-  } else {
-    snprintf(buf2, 20, "%ld B", range);
-  }
+  std::string buf2 = BeautifulOffsetString(range);
 
   snprintf(buf, 100, "0x%08lX-0x%08lX (%.2f-%.2f MiB) Stride=%d Showing %s",
-    start_address, start_address + range, mib_lb, mib_ub, stride, buf2);
+    start_address, start_address + range, mib_lb, mib_ub, stride, buf2.c_str());
   GlutBitmapString(x, y+11, std::string(buf));
 
   if (update_interval_ms > 0) {
@@ -796,7 +820,7 @@ void MemView::Render() {
   GlutBitmapString(x+w-1-tw, y+11, std::string(buf));
 }
 
-void MemView::SetSize(int _w, int _h) {
+void MemLinearView::SetSize(int _w, int _h) {
   w = _w; h = _h;
   pixel_w = w - 16; pixel_h = h - 32;
 
@@ -808,7 +832,7 @@ void MemView::SetSize(int _w, int _h) {
   }
 }
 
-void MemView::ConvertToPixels() {
+void MemLinearView::ConvertToPixels() {
   const int nc = bytes2pixel->NumPixelDataChannels();
   const int bp = bytes2pixel->NumBytesPerPixel();
   unsigned char *byte_ptr = bytes.data();
@@ -828,7 +852,7 @@ void MemView::ReadMemoryFromQEMU() {
   last_update_ms = millis();
 }
 
-void MemView::OnKeyDown(int k) {
+void MemLinearView::OnKeyDown(int k) {
   switch (k) {
     case GLUT_KEY_UP: { ScrollLines(-8); break; }
     case GLUT_KEY_DOWN: { ScrollLines(8); break; }
@@ -840,13 +864,7 @@ void MemView::OnKeyDown(int k) {
   }
 }
 
-bool MemView::ShouldUpdate() {
-  if (update_interval_ms <= 0) return false;
-  else if (millis() - last_update_ms >= update_interval_ms) return true;
-  else return false;
-}
-
-void MemView::ScrollLines(int nlines) {
+void MemLinearView::ScrollLines(int nlines) {
   const int delta = nlines * bytes2pixel->NumPixelDataChannels() * pixel_w * stride;
   start_address += delta;
   if (start_address < 0) {
@@ -864,4 +882,134 @@ void MemView::ZoomIn() {
   stride /= 2;
   if (stride <= 1) stride = 1;
   ReadMemoryFromQEMU();
+}
+
+MemTiledView::MemTiledView() : pad_x(64), pad_y(32) {
+  bytes2pixel = new BytesToRG();
+}
+
+void MemTiledView::SetSize(int _w, int _h) {
+  w = _w; h = _h;
+  tile_size = 16;
+  ncols = int((w - pad_x) / (tile_size + 1));
+  nrows = int((h - pad_y) / (tile_size + 1));
+  
+  const int sp = nrows * ncols * tile_size * tile_size * bytes2pixel->NumPixelDataChannels();
+  pixels.resize(sp);
+  const int sb = nrows * ncols * tile_size * tile_size * bytes2pixel->NumBytesPerPixel();
+  bytes.resize(sb);
+}
+
+void MemTiledView::Render() {
+  char buf[100];
+
+  if (ShouldUpdate()) {
+    ReadMemoryFromQEMU();
+  }
+
+  DrawBorder();
+  g_red = 0.7f; g_blue = 0.7f; g_green = 0.7f;
+
+  // Draw tiles
+  int dx = x + pad_x, dy = y + pad_y;
+  for (int r=0; r<nrows; r++) {
+    for (int c=0; c<ncols; c++) {
+      int dx0 = dx, dy0 = dy, dx1 = dx0+tile_size+1, dy1 = dy0+tile_size+1;
+      rect(dx0, dy0, dx1, dy1);
+      dx += tile_size+1;
+    }
+    dx  = x + pad_x;
+    dy += (1+tile_size);
+  }
+
+  // Draw memory contents
+  g_red = 1.0f; g_blue = 1.0f; g_green = 1.0f;
+  rect(-1, -1, -1, -1); // Change raster color
+  dx = x + pad_x;
+  dy = y + pad_y;
+  for (int r=0; r<nrows; r++) {
+    const int dy0 = dy + (1 + tile_size) * r + tile_size/2 + 4;
+    int64_t offset = start_address + BytesPerRow() * r;
+    std::string x = BeautifulOffsetString(offset);
+    const int tw = TextWidth(x);
+    GlutBitmapString(dx - tw - 2, dy0, x);
+  }
+
+  // Draw memory content
+  const int nc = bytes2pixel->NumPixelDataChannels();
+  int64_t per_tile_offset = nc * tile_size * tile_size;
+  int idx = 0;
+  for (int r=0; r<nrows; r++) {
+    for (int c=0; c<ncols; c++) {
+      const int dx0 = dx + (1 + tile_size) * c, dy0 = dy  + (1 + tile_size) * r;
+      glWindowPos2i(dx0, WIN_H - dy0 - tile_size);
+      glDrawPixels(tile_size, tile_size, bytes2pixel->Format(), GL_UNSIGNED_BYTE,
+          pixels.data() + per_tile_offset * idx);
+      idx ++;
+    }
+  }
+
+  // Caption
+  const int64_t range = BytesPerRow() * nrows;
+  std::string buf2 = BeautifulOffsetString(range);
+  const float mib_lb = float(start_address / 1024.0f / 1024.0f);
+  const float mib_ub = float((start_address + range) / 1024.0f / 1024.0f);
+  snprintf(buf, 100, "0x%08lX-0x%08lX (%.2f-%.2f MiB) Stride=%d Showing %s",
+    start_address, start_address + range, mib_lb, mib_ub, stride, buf2.c_str());
+  GlutBitmapString(x, y+11, std::string(buf));
+
+  if (update_interval_ms > 0) {
+    snprintf(buf, 100, "Refresh every %dms", update_interval_ms);
+  } else {
+    snprintf(buf, 100, "Press [space] to refresh");
+  }
+  int tw = TextWidth(buf);
+  GlutBitmapString(x+w-1-tw, y+11, std::string(buf));
+
+  const int64_t tile_bytes = tile_size * tile_size * bytes2pixel->NumBytesPerPixel() * stride;
+  std::string tb_str = "1 tile = " + BeautifulOffsetString(tile_bytes);
+  GlutBitmapString(x, y+24, tb_str);
+}
+
+void MemTiledView::ConvertToPixels() {
+  const int nc = bytes2pixel->NumPixelDataChannels();
+  const int bp = bytes2pixel->NumBytesPerPixel();
+  unsigned char *byte_ptr = bytes.data();
+  fill(pixels.begin(), pixels.end(), 0);
+
+  unsigned char *pixel_ptr = pixels.data();
+  const int64_t pixel_tile_offset = nc * tile_size * tile_size;
+
+  for (int i=0; i<nrows * ncols; i++) {
+    for (int y=0; y<tile_size; y++) {
+      for (int x=0; x<tile_size; x++) {
+        const int in_tile_offset = nc * ((tile_size - y) * tile_size + x);
+        bytes2pixel->BytesToPixel(byte_ptr,
+          pixel_ptr + in_tile_offset + pixel_tile_offset * i);
+        byte_ptr += bp;
+      }
+    }
+  }
+}
+
+void MemTiledView::OnKeyDown(int k) {
+  switch (k) {
+    case GLUT_KEY_UP: { ScrollLines(-1); break; }
+    case GLUT_KEY_DOWN: { ScrollLines(1); break; }
+    case GLUT_KEY_PAGE_UP: { ScrollLines(-nrows); break; }
+    case GLUT_KEY_PAGE_DOWN: { ScrollLines(nrows); break; }
+    case '-': { ZoomOut(); break; }
+    case '=': case '+': { ZoomIn(); break; }
+    case 32: { ReadMemoryFromQEMU(); break; }
+  }
+}
+
+int64_t MemTiledView::BytesPerRow() {
+  return tile_size * tile_size * ncols * bytes2pixel->NumBytesPerPixel() * stride;
+}
+
+void MemTiledView::ScrollLines(int nlines) {
+  int offset = nlines * BytesPerRow();
+  start_address += offset;
+  if (start_address < 0) start_address = 0;
 }
