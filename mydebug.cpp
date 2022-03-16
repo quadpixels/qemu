@@ -132,33 +132,39 @@ void color(const float r, const float g, const float b) {
   g_red = r; g_green = g; g_blue = b;
 }
 
+// Compensate the difference between the NVIDIA and AMD drivers
+float g_pad = 0.5f;
+
 void rect(int canvas_x0, int canvas_y0, int canvas_x1, int canvas_y1) {
   // With the transformation currently set, top-left is (0, 0).
   float r=g_red, g=g_green, b=g_blue;
   glBegin(GL_LINE_LOOP);
-  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y0);
-  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y0);
-  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y1);
-  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y1);
+  glColor3f(r, g, b); glVertex2f(canvas_x0, canvas_y0);
+  glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y0);
+  glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y1);
+  glColor3f(r, g, b); glVertex2f(canvas_x0 - g_pad, canvas_y1 + g_pad);
   glEnd();
 
   // To make sure the corners are drawn
-  glBegin(GL_POINTS);
-  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y0);
-  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y0);
-  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y1);
-  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y1);
-  glEnd();
+  // Not needed on an NVIDIA driver
+  if (g_pad == 0.0f) {
+    glBegin(GL_POINTS);
+    glColor3f(r, g, b); glVertex2f(canvas_x0, canvas_y0);
+    glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y0);
+    glColor3f(r, g, b); glVertex2f(canvas_x1, canvas_y1);
+    glColor3f(r, g, b); glVertex2f(canvas_x0 - g_pad, canvas_y1 + g_pad);
+    glEnd();
+  }
 }
 
 void fillRect(int canvas_x0, int canvas_y0, int canvas_x1, int canvas_y1) {
   // With the transformation currently set, top-left is (0, 0).
   float r=1, g=1, b=1;
   glBegin(GL_TRIANGLE_FAN);
-  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y0);
-  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y0);
-  glColor3f(r, g, b); glVertex2i(canvas_x1, canvas_y1);
-  glColor3f(r, g, b); glVertex2i(canvas_x0, canvas_y1);
+  glColor3f(r, g, b); glVertex2f(canvas_x0 - g_pad, canvas_y0);
+  glColor3f(r, g, b); glVertex2f(canvas_x1,         canvas_y0);
+  glColor3f(r, g, b); glVertex2f(canvas_x1,         canvas_y1 + g_pad);
+  glColor3f(r, g, b); glVertex2f(canvas_x0 - g_pad, canvas_y1 + g_pad);
   glEnd();
   rect(canvas_x0, canvas_y0, canvas_x1, canvas_y1); // make sure the boundary is drawn
 }
@@ -942,7 +948,7 @@ void MemTiledView::Render() {
   for (int r=0; r<nrows; r++) {
     for (int c=0; c<ncols; c++) {
       const int dx0 = dx + (1 + tile_size) * c, dy0 = dy  + (1 + tile_size) * r;
-      glWindowPos2i(dx0, WIN_H - dy0 - tile_size);
+      glWindowPos2i(dx0, WIN_H - dy0 - tile_size - g_pad);
       glDrawPixels(tile_size, tile_size, bytes2pixel->Format(), GL_UNSIGNED_BYTE,
           pixels.data() + per_tile_offset * idx);
       idx ++;
