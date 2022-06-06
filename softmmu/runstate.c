@@ -731,7 +731,9 @@ void qemu_main_loop(void)
 #ifdef CONFIG_PROFILER
         dev_time += profile_getclock() - ti;
 #endif
+#ifdef NPCM7XX_H
         UpdateNPCM7XXDebugTimerStates();
+#endif
     }
 }
 

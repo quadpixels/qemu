@@ -86,7 +86,7 @@ struct I2CBusStateView : public MyView {
   };
 
   int hovered_i2c_idx;
-  std::vector<bool> pending_i2c_nacks;
+  std::vector<int> pending_i2c_nacks;
 
   std::vector<int> tx_count_last_interval, read_count_last_interval, write_count_last_interval;
   std::unordered_map<std::string, int> i2c2idx_;

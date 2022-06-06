@@ -683,7 +683,7 @@ void I2CBusStateView::Render() {
       fillRect(grid_x + 2, grid_y + 2, grid_x + 2 + fill_w, grid_y + grid_h - 2);
     }
 
-    if (pending_i2c_nacks[idx] == true) {
+    if (pending_i2c_nacks[idx] > 0) {
       color(1, 1, 0);
       rect(grid_x+1, grid_y+1, grid_x+grid_w-1, grid_y+grid_h-1);
       color(1, 1, 1);
@@ -718,9 +718,9 @@ void I2CBusStateView::OnI2CTransactionStart(const char* desc, char* is_inject) {
   int idx = i2c2idx_.at(std::string(desc));
   states_[idx].tx_count ++;
   if (is_inject) {
-    if (pending_i2c_nacks[idx]) {
+    if (pending_i2c_nacks[idx] > 0) {
       *is_inject = true;
-      pending_i2c_nacks[idx] = false;
+      pending_i2c_nacks[idx] --;
     }
   }
 }
@@ -729,18 +729,21 @@ void I2CBusStateView::OnMouseDown(int button) {
   char x[100];
   if (hovered_i2c_idx != -999) {
     if (button == GLUT_LEFT_BUTTON) {
-      if (pending_i2c_nacks[hovered_i2c_idx] == false) {
-        sprintf(x, "pending NACK injection to i2c-%d\n", hovered_i2c_idx);
+      {
+        sprintf(x, "+1 NACK injection to i2c-%d, total %d\n",
+          hovered_i2c_idx, pending_i2c_nacks[hovered_i2c_idx]);
         AddLogEntry(x);
       }
-      pending_i2c_nacks[hovered_i2c_idx] = true;
+      pending_i2c_nacks[hovered_i2c_idx] ++;
     } else if (button == GLUT_RIGHT_BUTTON) {
       // Assuming we're using NPCM7XX
+      #ifdef NPCM7XX_H
       if (hovered_i2c_idx < 16) {
         InjectNpcm7xxSMBusNack(hovered_i2c_idx);
         sprintf(x, "Injected NACK to i2c-%d (SMBus)", hovered_i2c_idx);
         AddLogEntry(x);
       }
+      #endif
     }
   }
 }
